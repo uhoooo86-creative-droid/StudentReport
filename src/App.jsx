@@ -481,6 +481,66 @@ function AssessmentView({ child, profile, onBack }) {
 }
 
 // ─────────────────────────────────────────
+// 마이페이지 (기관코드 확인)
+// ─────────────────────────────────────────
+function MyPage({ profile, onBack }) {
+  const [code, setCode] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    supabase.rpc('my_school_code').then(({ data, error }) => {
+      if (!error) setCode(data)
+      setLoading(false)
+    })
+  }, [])
+
+  const handleCopy = () => {
+    if (!code) return
+    navigator.clipboard?.writeText(code)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+
+  return (
+    <div>
+      <button onClick={onBack} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: C.accent, fontSize: 14, fontWeight: 600, cursor: 'pointer', marginBottom: 16, padding: 0 }}>← 아동 목록으로</button>
+
+      <h2 style={{ fontSize: 18, fontWeight: 800, color: C.primary, marginBottom: 16 }}>마이페이지</h2>
+
+      <div style={{ background: C.surface, borderRadius: 14, padding: 20, marginBottom: 16, boxShadow: '0 2px 12px rgba(0,0,0,.06)' }}>
+        <p style={{ fontSize: 13, color: C.muted, marginBottom: 4 }}>선생님 이름</p>
+        <p style={{ fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 16 }}>{profile.name || '-'}</p>
+
+        <p style={{ fontSize: 13, color: C.muted, marginBottom: 4 }}>역할</p>
+        <p style={{ fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 16 }}>{profile.role === 'admin' ? '관리자' : '교사'}</p>
+
+        <p style={{ fontSize: 13, color: C.muted, marginBottom: 4 }}>기관코드</p>
+        {loading ? (
+          <p style={{ fontSize: 14, color: C.muted }}>불러오는 중...</p>
+        ) : code ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{
+              fontSize: 24, fontWeight: 800, color: C.primary, letterSpacing: 3,
+              fontFamily: 'monospace', background: C.light, borderRadius: 10, padding: '8px 16px',
+            }}>{code}</span>
+            <button onClick={handleCopy}
+              style={{ background: C.accent, color: '#fff', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+              {copied ? '복사됨!' : '복사'}
+            </button>
+          </div>
+        ) : (
+          <p style={{ fontSize: 13, color: C.muted }}>코드를 불러올 수 없습니다.</p>
+        )}
+        <p style={{ fontSize: 12, color: C.muted, marginTop: 12, lineHeight: 1.6 }}>
+          같은 기관의 다른 선생님이 가입할 때 "기존 기관 합류" 탭에서 이 코드를 입력하면 같은 기관 데이터에 접근할 수 있습니다.
+        </p>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────
 // 메인 앱
 // ─────────────────────────────────────────
 export default function App() {
@@ -490,6 +550,7 @@ export default function App() {
   const [children, setChildren] = useState([])
   const [childrenLoading, setChildrenLoading] = useState(true)
   const [selectedChild, setSelectedChild] = useState(null)
+  const [showMyPage, setShowMyPage] = useState(false)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -541,6 +602,7 @@ export default function App() {
   const handleLogout = async () => {
     await supabase.auth.signOut()
     setSelectedChild(null)
+    setShowMyPage(false)
   }
 
   if (authLoading) {
@@ -569,13 +631,18 @@ export default function App() {
             <p style={{ fontSize: 11, color: 'rgba(255,255,255,.6)', fontWeight: 600, letterSpacing: 1, marginBottom: 2 }}>사회·정서 발달 성장평가</p>
             <h1 style={{ fontSize: 18, fontWeight: 800, lineHeight: 1.2 }}>우리 아이 사회성 성장 포트폴리오</h1>
           </div>
-          <button onClick={handleLogout} style={{ background: 'rgba(255,255,255,.15)', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 12px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>로그아웃</button>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={() => { setShowMyPage(true); setSelectedChild(null) }} style={{ background: 'rgba(255,255,255,.15)', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 12px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>마이페이지</button>
+            <button onClick={handleLogout} style={{ background: 'rgba(255,255,255,.15)', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 12px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>로그아웃</button>
+          </div>
         </div>
         <p style={{ fontSize: 11, color: 'rgba(255,255,255,.5)', marginTop: 8 }}>{profile.name || '선생님'} 님</p>
       </div>
 
       <div style={{ maxWidth: 480, margin: '0 auto', padding: '20px 16px 40px' }}>
-        {selectedChild ? (
+        {showMyPage ? (
+          <MyPage profile={profile} onBack={() => setShowMyPage(false)} />
+        ) : selectedChild ? (
           <AssessmentView child={selectedChild} profile={profile} onBack={() => setSelectedChild(null)} />
         ) : (
           <ChildrenList children={children} onSelect={setSelectedChild} onAdd={handleAddChild} loading={childrenLoading} />

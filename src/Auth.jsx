@@ -47,12 +47,13 @@ export default function Auth() {
 
     // 세션이 즉시 생기는 경우(이메일 확인 비활성화)에만 RPC 호출 가능
     if (data.session) {
-      const { data: schoolId, error: rpcError } = await supabase.rpc('create_school_and_profile', {
+      const { data: rpcData, error: rpcError } = await supabase.rpc('create_school_and_profile', {
         p_school_name: schoolName,
         p_teacher_name: teacherName,
       })
       if (rpcError) { setError(rpcError.message); setLoading(false); return }
-      setInfo(`기관이 생성되었습니다! 기관코드(school_id): ${schoolId}\n다른 선생님이 합류할 때 이 코드를 공유하세요.`)
+      const code = rpcData?.[0]?.school_code
+      setInfo(`기관이 생성되었습니다!\n\n기관코드: ${code}\n\n다른 선생님이 합류할 때 이 코드를 공유하세요. (마이페이지에서 언제든 다시 확인 가능합니다)`)
     } else {
       setInfo('가입 확인 메일을 확인해주세요. 이메일 인증 후 다시 로그인하면 기관 생성이 완료됩니다.')
     }
@@ -69,7 +70,7 @@ export default function Auth() {
 
     if (data.session) {
       const { error: rpcError } = await supabase.rpc('join_school', {
-        p_school_id: schoolCode,
+        p_school_code: schoolCode,
         p_teacher_name: teacherName,
       })
       if (rpcError) { setError(rpcError.message); setLoading(false); return }
@@ -117,7 +118,7 @@ export default function Auth() {
         )}
 
         {mode === 'signup-join' && (
-          <input style={inputStyle} type="text" placeholder="기관코드 (관리자에게 받은 school_id)" value={schoolCode} onChange={(e) => setSchoolCode(e.target.value)} />
+          <input style={inputStyle} type="text" placeholder="기관코드 (예: ABC1234)" value={schoolCode} onChange={(e) => setSchoolCode(e.target.value.toUpperCase())} />
         )}
 
         {error && <p style={{ color: '#C0392B', fontSize: 12, marginBottom: 10, whiteSpace: 'pre-wrap' }}>{error}</p>}
