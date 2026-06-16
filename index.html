@@ -220,7 +220,7 @@ function ResultScreen({child,allData,schoolId,onBack}){
       const line=allData.map((pd,i)=>`${PHASES[i].label}:${domainAvg(pd.scores,d.id)}점`).join(', ');
       return `${d.label}: ${line}`;
     }).join('\n');
-    const res=await fetch('https://api.anthropic.com/v1/messages',{
+    const res=await fetch('/.netlify/functions/claude',{
       method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1000,messages:[{role:'user',content:`당신은 유아·아동 사회정서발달 전문 교육 평가사입니다.\n아이 이름: ${child.child_name}\n\n학기별 5대 영역 점수:\n${summary}\n\n전문적이고 따뜻한 성장 보고서를 작성하세요:\n1. 전반적 성장 요약 (2문장)\n2. 강점 영역 서술\n3. 성장 관찰 영역 서술\n4. 향후 지원 방향\n\n- 아이 이름 대신 "OO" 사용\n- 동물유형/MBTI 절대 금지\n- 600자 내외`}]})
     });
