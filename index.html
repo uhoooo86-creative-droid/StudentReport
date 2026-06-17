@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>사회·정서 발달 성장평가</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;background:#F7F8FA;min-height:100vh}
+button{font-family:inherit}
+textarea,input{font-family:inherit}
+
+@media print {
+  body * { visibility: hidden; }
+  #printable-area, #printable-area * { visibility: visible; }
+  #printable-area { position: absolute; left: 0; top: 0; width: 100%; padding: 20px; }
+  .no-print { display: none !important; }
+  .print-only-title { display: block !important; }
+}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useCallback } = React;
+
+const SUPABASE_URL = 'https://xoliqvzxndsrsqtaqmcu.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhvbGlxdnp4bmRzcnNxdGFxbWN1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEyNTcxNDgsImV4cCI6MjA5NjgzMzE0OH0.Gsp5Gs9JpCNxY3_YG0KdeImdMZg6wvAGBSMEbKBCQ9A';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const DOMAINS = [
+  {id:'self_awareness',label:'자기인식',icon:'🔍',color:'#4A7C59',light:'#EAF3ED',
+    items:['감정 알아차리기','자신의 생각 표현하기','자신의 강점·약점 인식','감정에 이름 붙이기']},
+  {id:'self_regulation',label:'자기조절',icon:'⚖️',color:'#2D6A9F',light:'#E8F0F9',
+    items:['기다리기·차례 지키기','감정 조절하기','규칙 지키기','충동 조절하기']},
+  {id:'social_awareness',label:'사회적 인식',icon:'🌐',color:'#7B5EA7',light:'#F1ECF9',
+    items:['친구 감정 이해하기','배려하는 행동','공감 표현하기','다양성 존중하기']},
+  {id:'relationship_skills',label:'관계기술',icon:'🤝',color:'#C0622F',light:'#FAF0EB',
+    items:['인사하기·친근감 표현','놀이 참여하기','협동하여 목표 달성','갈등 해결하기']},
+  {id:'decision_making',label:'책임 있는 의사결정',icon:'🎯',color:'#8B7A1A',light:'#F9F6E8',
+    items:['문제 상황 판단하기','도움 요청하기','선택 결과 이해하기','안전한 행동 선택']},
+];
+const PHASES = [
+  {id:'initial',label:'학기 초',icon:'🌱'},
+  {id:'semester1',label:'1학기 평가',icon:'📋'},
+  {id:'semester2',label:'2학기 평가',icon:'📝'},
+  {id:'final',label:'연말 종합',icon:'🏁'},
+];
+const SCORE_LABELS = ['미관찰','초기단계','발달중','안정적','능숙'];
+const SCORE_COLORS = ['#bbb','#E8A87C','#F0C96A','#7EC8A4','#4A7C59'];
+const C = {bg:'#F7F8FA',surface:'#fff',border:'#E2E8F0',primary:'#1A3A5C',accent:'#4A7C59',text:'#1E2A38',muted:'#64748B'};
+
+function emptyScores(){
+  const s={};
+  DOMAINS.forEach(d=>{s[d.id]={};d.items.forEach((_,i)=>{s[d.id][i]=0});});
+  return s;
+}
+function domainAvg(scores,domainId){
+  const d=DOMAINS.find(x=>x.id===domainId);
+  const vals=d.items.map((_,i)=>Number(scores?.[domainId]?.[i]??0));
+  const filled=vals.filter(v=>v>0);
+  if(!filled.length)return 0;
+  return Math.round((filled.reduce((a,b)=>a+b,0)/filled.length)*25);
+}
+
+// ── Auth ──
+function Auth(){
+  const [mode,setMode]=useState('login');
+  const [email,setEmail]=useState('');
+  const [pw,setPw]=useState('');
+  const [name,setName]=useState('');
+  const [schoolName,setSchoolName]=useState('');
+  const [code,setCode]=useState('');
+  const [msg,setMsg]=useState('');
+  const [err,setErr]=useState('');
+  const [loading,setLoading]=useState(false);
+
+  const inp={width:'100%',borderRadius:8,border:`1.5px solid ${C.border}`,padding:'10px 12px',fontSize:14,marginBottom:10,outline:'none'};
+
+  async function doLogin(){
+    setLoading(true);setErr('');
+    const {error}=await sb.auth.signInWithPassword({email,password:pw});
+    if(error)setErr(error.message);
+    setLoading(false);
+  }
+  async function doSignupNew(){
+    if(!email||!pw||!name||!schoolName){setErr('모든 항목을 입력해주세요.');return;}
+    setLoading(true);setErr('');
+    const {data,error}=await sb.auth.signUp({email,password:pw});
+    if(error){setErr(error.message);setLoading(false);return;}
+    if(data.session){
+      const {data:rpc,error:re}=await sb.rpc('create_school_and_profile',{p_school_name:schoolName,p_teacher_name:name});
+      if(re){setErr(re.message);setLoading(false);return;}
+      const c=rpc?.[0]?.school_code;
+      setMsg(`기관 생성 완료!\n기관코드: ${c}\n다른 선생님께 이 코드를 공유하세요.`);
+    } else {
+      setMsg('가입 확인 메일을 확인해주세요.');
+    }
+    setLoading(false);
+  }
+  async function doJoin(){
+    if(!email||!pw||!name||!code){setErr('모든 항목을 입력해주세요.');return;}
+    setLoading(true);setErr('');
+    const {data,error}=await sb.auth.signUp({email,password:pw});
+    if(error){setErr(error.message);setLoading(false);return;}
+    if(data.session){
+      const {error:re}=await sb.rpc('join_school',{p_school_code:code.toUpperCase(),p_teacher_name:name});
+      if(re){setErr(re.message);setLoading(false);return;}
+      setMsg('가입 완료!');
+    } else {
+      setMsg('가입 확인 메일을 확인해주세요.');
+    }
+    setLoading(false);
+  }
+
+  const tabs=[{id:'login',label:'로그인'},{id:'signup-new',label:'신규 기관 가입'},{id:'signup-join',label:'기존 기관 합류'}];
+
+  return (
+    <div style={{minHeight:'100vh',background:C.bg,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
+      <div style={{maxWidth:400,width:'100%',background:C.surface,borderRadius:16,padding:28,boxShadow:'0 4px 24px rgba(0,0,0,.08)'}}>
+        <p style={{fontSize:11,color:C.muted,fontWeight:700,letterSpacing:1,textAlign:'center'}}>사회·정서 발달 성장평가</p>
+        <h1 style={{fontSize:20,fontWeight:800,color:C.primary,textAlign:'center',marginTop:4,marginBottom:20}}>교사 로그인</h1>
+        <div style={{display:'flex',gap:5,marginBottom:18}}>
+          {tabs.map(t=>(
+            <button key={t.id} onClick={()=>{setMode(t.id);setErr('');setMsg('');}}
+              style={{flex:1,padding:'7px 4px',borderRadius:8,fontSize:10,fontWeight:700,border:`1.5px solid ${mode===t.id?C.primary:C.border}`,background:mode===t.id?C.primary:C.surface,color:mode===t.id?'#fff':C.muted,cursor:'pointer'}}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <input style={inp} type="email" placeholder="이메일" value={email} onChange={e=>setEmail(e.target.value)}/>
+        <input style={inp} type="password" placeholder="비밀번호 (6자 이상)" value={pw} onChange={e=>setPw(e.target.value)}/>
+        {mode!=='login'&&<input style={inp} type="text" placeholder="선생님 이름" value={name} onChange={e=>setName(e.target.value)}/>}
+        {mode==='signup-new'&&<input style={inp} type="text" placeholder="기관 이름" value={schoolName} onChange={e=>setSchoolName(e.target.value)}/>}
+        {mode==='signup-join'&&<input style={inp} type="text" placeholder="기관코드 (예: ABC1234)" value={code} onChange={e=>setCode(e.target.value.toUpperCase())}/>}
+        {err&&<p style={{color:'#C0392B',fontSize:12,marginBottom:8,whiteSpace:'pre-wrap'}}>{err}</p>}
+        {msg&&<p style={{color:C.accent,fontSize:12,marginBottom:8,whiteSpace:'pre-wrap',lineHeight:1.6}}>{msg}</p>}
+        <button onClick={mode==='login'?doLogin:mode==='signup-new'?doSignupNew:doJoin} disabled={loading}
+          style={{width:'100%',padding:14,borderRadius:10,border:'none',background:C.primary,color:'#fff',fontSize:15,fontWeight:800,cursor:'pointer',opacity:loading?0.6:1}}>
+          {loading?'처리 중...':(mode==='login'?'로그인':'가입하기')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── 점수 버튼 ──
+function ScoreRow({label,value,onChange}){
+  return (
+    <div style={{marginBottom:14}}>
+      <div style={{display:'flex',justifyContent:'space-between',marginBottom:5}}>
+        <span style={{fontSize:13,color:C.text,fontWeight:500}}>{label}</span>
+        <span style={{fontSize:11,color:SCORE_COLORS[value],fontWeight:700}}>{SCORE_LABELS[value]}</span>
+      </div>
+      <div style={{display:'flex',gap:5}}>
+        {[0,1,2,3,4].map(v=>(
+          <button key={v} onClick={()=>onChange(v)}
+            style={{flex:1,height:34,borderRadius:6,border:value===v?'none':`1px solid ${C.border}`,
+              background:value===v?SCORE_COLORS[v]:'#f8f9fb',
+              color:value===v?'#fff':C.muted,fontSize:12,fontWeight:700,cursor:'pointer'}}>
+            {v===0?'—':v}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── 평가 폼 ──
+function AssessmentForm({childName,scores,onScoreChange,notes,onNotesChange}){
+  const [openDomain,setOpenDomain]=useState(null);
+  return (
+    <div>
+      <div style={{background:'#E8F0F9',borderRadius:10,padding:'12px 14px',borderLeft:`4px solid ${C.primary}`,marginBottom:14}}>
+        <p style={{fontSize:13,color:C.text,lineHeight:1.6}}>{childName}의 기관 내 관찰 내용을 바탕으로 5대 영역별 평가를 작성해주세요.</p>
+      </div>
+      {DOMAINS.map(d=>{
+        const avg=domainAvg(scores,d.id);
+        const isOpen=openDomain===d.id;
+        return (
+          <div key={d.id} style={{border:`1.5px solid ${isOpen?d.color:C.border}`,borderRadius:10,marginBottom:8,overflow:'hidden'}}>
+            <button onClick={()=>setOpenDomain(isOpen?null:d.id)}
+              style={{width:'100%',padding:'13px 14px',background:isOpen?d.light:C.surface,border:'none',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+              <span style={{display:'flex',alignItems:'center',gap:8}}>
+                <span style={{fontSize:18}}>{d.icon}</span>
+                <span style={{fontWeight:700,color:d.color,fontSize:14}}>{d.label}</span>
+              </span>
+              <span style={{display:'flex',alignItems:'center',gap:8}}>
+                {avg>0&&<span style={{background:d.color,color:'#fff',borderRadius:20,padding:'2px 10px',fontSize:11,fontWeight:800}}>{avg}점</span>}
+                <span style={{color:C.muted}}>{isOpen?'▲':'▼'}</span>
+              </span>
+            </button>
+            {isOpen&&(
+              <div style={{padding:14,background:'#fafafa',borderTop:`1px solid ${d.color}30`}}>
+                {d.items.map((item,idx)=>(
+                  <ScoreRow key={idx} label={item}
+                    value={Number(scores[d.id]?.[idx]??0)}
+                    onChange={v=>onScoreChange(d.id,idx,v)}/>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+      <div style={{marginTop:12}}>
+        <label style={{fontSize:13,fontWeight:600,color:C.text,display:'block',marginBottom:5}}>관찰 메모 (선택)</label>
+        <textarea value={notes} onChange={e=>onNotesChange(e.target.value)}
+          placeholder="특이사항, 성장 에피소드, 지원 방향 등"
+          style={{width:'100%',minHeight:72,borderRadius:8,border:`1px solid ${C.border}`,padding:'9px 11px',fontSize:13,color:C.text,resize:'vertical',lineHeight:1.6,outline:'none'}}/>
+      </div>
+    </div>
+  );
+}
+
+// ── 결과 화면 ──
+function ResultScreen({child,allData,schoolId,onBack}){
+  const [report,setReport]=useState('');
+  const [loading,setLoading]=useState(false);
+  const [saved,setSaved]=useState(false);
+
+  async function generate(){
+    setLoading(true);
+    const summary=DOMAINS.map(d=>{
+      const line=allData.map((pd,i)=>`${PHASES[i].label}:${domainAvg(pd.scores,d.id)}점`).join(', ');
+      return `${d.label}: ${line}`;
+    }).join('\n');
+    const res=await fetch('/.netlify/functions/claude',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1000,messages:[{role:'user',content:`당신은 유아·아동 사회정서발달 전문 교육 평가사입니다.\n아이 이름: ${child.child_name}\n\n학기별 5대 영역 점수:\n${summary}\n\n전문적이고 따뜻한 성장 보고서를 작성하세요:\n1. 전반적 성장 요약 (2문장)\n2. 강점 영역 서술\n3. 성장 관찰 영역 서술\n4. 향후 지원 방향\n\n- 아이 이름 대신 "OO" 사용\n- 동물유형/MBTI 절대 금지\n- 600자 내외`}]})
+    });
+    const data=await res.json();
+    setReport(data.content?.[0]?.text??'생성 실패');
+    setLoading(false);
+  }
+
+  async function save(){
+    await sb.from('reports').insert({school_id:schoolId,child_id:child.id,content:report});
+    setSaved(true);setTimeout(()=>setSaved(false),2000);
+  }
+
+  function handlePrint(){
+    window.print();
+  }
+
+  const radarData=DOMAINS.map(d=>{
+    const vals=allData.map(pd=>domainAvg(pd.scores,d.id)).filter(v=>v>0);
+    return {label:d.label,value:vals.length?Math.round(vals.reduce((a,b)=>a+b)/vals.length):0};
+  });
+
+  const cx=150,cy=150,r=100,n=radarData.length;
+  const ang=i=>(i/n)*2*Math.PI-Math.PI/2;
+  const pt=(i,sc)=>({x:cx+sc*r*Math.cos(ang(i)),y:cy+sc*r*Math.sin(ang(i))});
+
+  return (
+    <div>
+      <div className="no-print" style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+        <button onClick={onBack} style={{background:'none',border:'none',color:C.accent,fontSize:14,fontWeight:600,cursor:'pointer',padding:0}}>← 돌아가기</button>
+        {report&&<button onClick={handlePrint}
+          style={{background:C.primary,color:'#fff',border:'none',borderRadius:7,padding:'7px 14px',fontSize:12,fontWeight:700,cursor:'pointer'}}>
+          🖨️ 인쇄하기
+        </button>}
+      </div>
+      <div id="printable-area">
+      <h2 style={{fontSize:18,fontWeight:800,color:C.primary,marginBottom:4}}>{child.child_name} · 성장 포트폴리오</h2>
+      <p style={{fontSize:12,color:C.muted,marginBottom:16}}>5대 영역 통합 분석</p>
+      <div style={{display:'flex',justifyContent:'center',marginBottom:16}}>
+        <svg viewBox="0 0 300 300" style={{width:'100%',maxWidth:280}}>
+          {[0.25,0.5,0.75,1].map(sc=>(
+            <polygon key={sc} points={radarData.map((_,i)=>`${pt(i,sc).x},${pt(i,sc).y}`).join(' ')} fill="none" stroke="#E2E8F0" strokeWidth="1"/>
+          ))}
+          {radarData.map((_,i)=><line key={i} x1={cx} y1={cy} x2={pt(i,1).x} y2={pt(i,1).y} stroke="#E2E8F0" strokeWidth="1"/>)}
+          <polygon points={radarData.map((d,i)=>{const sc=d.value/100;return `${pt(i,sc).x},${pt(i,sc).y}`;}).join(' ')} fill="rgba(74,124,89,0.18)" stroke="#4A7C59" strokeWidth="2"/>
+          {radarData.map((d,i)=>{const lp=pt(i,1.28);return <text key={i} x={lp.x} y={lp.y} textAnchor="middle" dominantBaseline="middle" style={{fontSize:9,fill:C.primary,fontWeight:700}}>{d.label}</text>;})}
+          {radarData.map((d,i)=>{const p=pt(i,d.value/100);return <circle key={i} cx={p.x} cy={p.y} r={4} fill="#4A7C59"/>;})}
+        </svg>
+      </div>
+      <div style={{background:C.surface,borderRadius:12,padding:16,marginBottom:12,boxShadow:'0 2px 8px rgba(0,0,0,.06)'}}>
+        <p style={{fontWeight:700,color:C.primary,fontSize:14,marginBottom:12}}>5대 영역 점수</p>
+        {DOMAINS.map(d=>{
+          const pScores=allData.map((pd,i)=>({label:PHASES[i].label,val:domainAvg(pd.scores,d.id)}));
+          const latest=[...pScores].reverse().find(s=>s.val>0);
+          const score=latest?.val??0;
+          return (
+            <div key={d.id} style={{marginBottom:12}}>
+              <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
+                <span style={{fontSize:13,fontWeight:600,color:C.text}}>{d.icon} {d.label}</span>
+                <span style={{fontSize:13,fontWeight:800,color:d.color}}>{score}점</span>
+              </div>
+              <div style={{height:7,borderRadius:99,background:C.border}}>
+                <div style={{height:'100%',borderRadius:99,background:d.color,width:`${score}%`}}/>
+              </div>
+              <div style={{display:'flex',gap:4,marginTop:4,flexWrap:'wrap'}}>
+                {pScores.filter(s=>s.val>0).map(s=>(
+                  <span key={s.label} style={{fontSize:10,color:d.color,background:d.light,borderRadius:20,padding:'1px 7px',fontWeight:600}}>{s.label}: {s.val}점</span>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{background:C.surface,borderRadius:12,padding:16,boxShadow:'0 2px 8px rgba(0,0,0,.06)'}}>
+        <div className="no-print" style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12,flexWrap:'wrap',gap:6}}>
+          <p style={{fontWeight:700,color:C.primary,fontSize:14}}>📄 성장 서술 리포트</p>
+          <div style={{display:'flex',gap:6}}>
+            <button onClick={generate} disabled={loading}
+              style={{background:C.accent,color:'#fff',border:'none',borderRadius:7,padding:'7px 12px',fontSize:12,fontWeight:700,cursor:'pointer',opacity:loading?0.6:1}}>
+              {loading?'생성중…':report?'재생성':'AI 리포트 생성'}
+            </button>
+            {report&&<button onClick={save} style={{background:C.primary,color:'#fff',border:'none',borderRadius:7,padding:'7px 12px',fontSize:12,fontWeight:700,cursor:'pointer'}}>
+              {saved?'저장됨!':'저장'}
+            </button>}
+          </div>
+        </div>
+        <p className="print-only-title" style={{fontWeight:700,color:C.primary,fontSize:14,marginBottom:12,display:'none'}}>📄 성장 서술 리포트</p>
+        {report
+          ?<p style={{fontSize:13,color:C.text,lineHeight:1.8,whiteSpace:'pre-wrap'}}>{report}</p>
+          :<p style={{color:C.muted,fontSize:13,textAlign:'center',padding:'16px 0'}}>버튼을 눌러 AI 성장 리포트를 생성하세요.</p>
+        }
+      </div>
+      </div>
+    </div>
+  );
+}
+
+// ── 평가 화면 ──
+function AssessmentView({child,profile,onBack}){
+  const [phaseIdx,setPhaseIdx]=useState(0);
+  const [allData,setAllData]=useState(PHASES.map(()=>({scores:emptyScores(),notes:'',dbId:null})));
+  const [loading,setLoading]=useState(true);
+  const [saving,setSaving]=useState(false);
+  const [saveMsg,setSaveMsg]=useState('');
+  const [showResult,setShowResult]=useState(false);
+
+  useEffect(()=>{
+    (async()=>{
+      setLoading(true);
+      const {data}=await sb.from('assessments').select('*').eq('child_id',child.id);
+      if(data){
+        setAllData(prev=>prev.map((p,i)=>{
+          const row=data.find(r=>r.phase===PHASES[i].id);
+          return row?{scores:row.scores||emptyScores(),notes:row.notes||'',dbId:row.id}:p;
+        }));
+      }
+      setLoading(false);
+    })();
+  },[child.id]);
+
+  function handleScoreChange(domainId,idx,val){
+    setAllData(prev=>{
+      const next=[...prev];
+      next[phaseIdx]={
+        ...next[phaseIdx],
+        scores:{
+          ...next[phaseIdx].scores,
+          [domainId]:{...next[phaseIdx].scores[domainId],[idx]:val}
+        }
+      };
+      return next;
+    });
+  }
+
+  function handleNotesChange(val){
+    setAllData(prev=>{
+      const next=[...prev];
+      next[phaseIdx]={...next[phaseIdx],notes:val};
+      return next;
+    });
+  }
+
+  async function handleSave(){
+    setSaving(true);
+    const pd=allData[phaseIdx];
+    const payload={school_id:profile.school_id,child_id:child.id,phase:PHASES[phaseIdx].id,scores:pd.scores,notes:pd.notes,created_by:profile.id};
+    if(pd.dbId){
+      await sb.from('assessments').update(payload).eq('id',pd.dbId);
+    } else {
+      const {data}=await sb.from('assessments').insert(payload).select().single();
+      if(data){setAllData(prev=>{const next=[...prev];next[phaseIdx]={...next[phaseIdx],dbId:data.id};return next;});}
+    }
+    setSaveMsg('저장됨!');setSaving(false);setTimeout(()=>setSaveMsg(''),2000);
+  }
+
+  const hasAny=allData.some(pd=>DOMAINS.some(d=>Object.values(pd.scores[d.id]??{}).some(v=>v>0)));
+
+  if(showResult)return <ResultScreen child={child} allData={allData} schoolId={profile.school_id} onBack={()=>setShowResult(false)}/>;
+
+  return (
+    <div>
+      <button onClick={onBack} style={{background:'none',border:'none',color:C.accent,fontSize:14,fontWeight:600,cursor:'pointer',padding:0,marginBottom:14}}>← 아동 목록으로</button>
+      <h2 style={{fontSize:18,fontWeight:800,color:C.primary,marginBottom:14}}>{child.child_name}</h2>
+      <div style={{display:'flex',gap:5,marginBottom:16,overflowX:'auto',paddingBottom:2}}>
+        {PHASES.map((p,i)=>{
+          const done=DOMAINS.some(d=>Object.values(allData[i].scores[d.id]??{}).some(v=>v>0));
+          return (
+            <button key={p.id} onClick={()=>setPhaseIdx(i)}
+              style={{flexShrink:0,padding:'7px 12px',borderRadius:20,fontSize:11,fontWeight:700,border:`2px solid ${phaseIdx===i?C.primary:C.border}`,background:phaseIdx===i?C.primary:done?'#EAF3ED':C.surface,color:phaseIdx===i?'#fff':done?C.accent:C.muted,cursor:'pointer'}}>
+              {p.icon} {p.label} {done?'✓':''}
+            </button>
+          );
+        })}
+      </div>
+      {loading
+        ?<p style={{textAlign:'center',color:C.muted,padding:'32px 0'}}>불러오는 중...</p>
+        :<>
+          <AssessmentForm childName={child.child_name} scores={allData[phaseIdx].scores} onScoreChange={handleScoreChange} notes={allData[phaseIdx].notes} onNotesChange={handleNotesChange}/>
+          <div style={{display:'flex',gap:8,marginTop:14}}>
+            <button onClick={handleSave} disabled={saving}
+              style={{flex:1,padding:13,borderRadius:10,border:'none',background:C.accent,color:'#fff',fontSize:14,fontWeight:700,cursor:'pointer',opacity:saving?0.6:1}}>
+              {saveMsg||(saving?'저장 중…':'💾 저장')}
+            </button>
+            {hasAny&&<button onClick={()=>setShowResult(true)}
+              style={{flex:1,padding:13,borderRadius:10,border:`2px solid ${C.primary}`,background:'transparent',color:C.primary,fontSize:14,fontWeight:700,cursor:'pointer'}}>
+              📊 포트폴리오
+            </button>}
+          </div>
+        </>
+      }
+    </div>
+  );
+}
+
+// ── 아동 목록 ──
+function ChildList({schoolId,onSelect}){
+  const [children,setChildren]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [showAdd,setShowAdd]=useState(false);
+  const [name,setName]=useState('');
+  const [birth,setBirth]=useState('');
+
+  useEffect(()=>{
+    (async()=>{
+      const {data}=await sb.from('children').select('*').order('created_at',{ascending:false});
+      setChildren(data||[]);setLoading(false);
+    })();
+  },[]);
+
+  async function add(){
+    if(!name.trim())return;
+    const {data}=await sb.from('children').insert({school_id:schoolId,child_name:name.trim(),birth_date:birth||null}).select().single();
+    if(data)setChildren(prev=>[data,...prev]);
+    setName('');setBirth('');setShowAdd(false);
+  }
+
+  return (
+    <div>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
+        <h2 style={{fontSize:16,fontWeight:800,color:C.primary}}>👶 아동 목록</h2>
+        <button onClick={()=>setShowAdd(s=>!s)} style={{background:C.accent,color:'#fff',border:'none',borderRadius:7,padding:'7px 13px',fontSize:12,fontWeight:700,cursor:'pointer'}}>+ 아동 등록</button>
+      </div>
+      {showAdd&&(
+        <div style={{background:C.surface,borderRadius:10,padding:14,marginBottom:12,boxShadow:'0 2px 8px rgba(0,0,0,.06)'}}>
+          <input value={name} onChange={e=>setName(e.target.value)} placeholder="이름" style={{width:'100%',borderRadius:8,border:`1.5px solid ${C.border}`,padding:'9px 12px',fontSize:14,marginBottom:8,outline:'none'}}/>
+          <input value={birth} onChange={e=>setBirth(e.target.value)} type="date" style={{width:'100%',borderRadius:8,border:`1.5px solid ${C.border}`,padding:'9px 12px',fontSize:14,marginBottom:8,outline:'none'}}/>
+          <button onClick={add} style={{width:'100%',background:C.primary,color:'#fff',border:'none',borderRadius:8,padding:10,fontSize:14,fontWeight:700,cursor:'pointer'}}>등록</button>
+        </div>
+      )}
+      {loading?<p style={{textAlign:'center',color:C.muted,padding:'32px 0'}}>불러오는 중...</p>
+        :children.length===0?<p style={{textAlign:'center',color:C.muted,padding:'32px 0',fontSize:13}}>등록된 아동이 없습니다.</p>
+        :children.map(c=>(
+          <button key={c.id} onClick={()=>onSelect(c)}
+            style={{width:'100%',textAlign:'left',background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,padding:'13px 14px',marginBottom:7,cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+            <div>
+              <p style={{fontWeight:700,fontSize:14,color:C.text}}>{c.child_name}</p>
+              {c.birth_date&&<p style={{fontSize:11,color:C.muted,marginTop:2}}>{c.birth_date}</p>}
+            </div>
+            <span style={{color:C.muted}}>→</span>
+          </button>
+        ))
+      }
+    </div>
+  );
+}
+
+// ── 마이페이지 ──
+function MyPage({profile,onBack}){
+  const [code,setCode]=useState(null);
+  const [copied,setCopied]=useState(false);
+  useEffect(()=>{sb.rpc('my_school_code').then(({data})=>setCode(data));},[]);
+  function copy(){navigator.clipboard?.writeText(code);setCopied(true);setTimeout(()=>setCopied(false),1500);}
+  return (
+    <div>
+      <button onClick={onBack} style={{background:'none',border:'none',color:C.accent,fontSize:14,fontWeight:600,cursor:'pointer',padding:0,marginBottom:16}}>← 아동 목록으로</button>
+      <h2 style={{fontSize:18,fontWeight:800,color:C.primary,marginBottom:16}}>마이페이지</h2>
+      <div style={{background:C.surface,borderRadius:12,padding:18,boxShadow:'0 2px 8px rgba(0,0,0,.06)'}}>
+        <p style={{fontSize:12,color:C.muted,marginBottom:2}}>선생님 이름</p>
+        <p style={{fontSize:15,fontWeight:700,color:C.text,marginBottom:14}}>{profile.name||'-'}</p>
+        <p style={{fontSize:12,color:C.muted,marginBottom:2}}>역할</p>
+        <p style={{fontSize:15,fontWeight:700,color:C.text,marginBottom:14}}>{profile.role==='admin'?'관리자':'교사'}</p>
+        <p style={{fontSize:12,color:C.muted,marginBottom:8}}>기관코드</p>
+        {code?(
+          <div style={{display:'flex',alignItems:'center',gap:10}}>
+            <span style={{fontSize:22,fontWeight:800,color:C.primary,letterSpacing:3,fontFamily:'monospace',background:'#F0F4F8',borderRadius:8,padding:'7px 14px'}}>{code}</span>
+            <button onClick={copy} style={{background:C.accent,color:'#fff',border:'none',borderRadius:7,padding:'7px 12px',fontSize:12,fontWeight:700,cursor:'pointer'}}>{copied?'복사됨!':'복사'}</button>
+          </div>
+        ):<p style={{color:C.muted,fontSize:13}}>불러오는 중...</p>}
+        <p style={{fontSize:11,color:C.muted,marginTop:10,lineHeight:1.6}}>같은 기관 선생님은 "기존 기관 합류"에서 이 코드로 가입합니다.</p>
+      </div>
+    </div>
+  );
+}
+
+// ── 관리자 대시보드 ──
+function Dashboard({onBack}){
+  const [stats,setStats]=useState(null);
+  const [loading,setLoading]=useState(true);
+
+  useEffect(()=>{
+    sb.rpc('get_school_dashboard').then(({data,error})=>{
+      if(!error)setStats(data);
+      setLoading(false);
+    });
+  },[]);
+
+  if(loading)return <p style={{textAlign:'center',color:C.muted,padding:'32px 0'}}>불러오는 중...</p>;
+  if(!stats)return <p style={{textAlign:'center',color:C.muted,padding:'32px 0'}}>통계를 불러올 수 없습니다.</p>;
+
+  const domainLabels={self_awareness:'자기인식',self_regulation:'자기조절',social_awareness:'사회적 인식',relationship_skills:'관계기술',decision_making:'책임 있는 의사결정'};
+  const phaseLabels={initial:'학기 초',semester1:'1학기',semester2:'2학기',final:'연말'};
+
+  return (
+    <div>
+      <button onClick={onBack} style={{background:'none',border:'none',color:C.accent,fontSize:14,fontWeight:600,cursor:'pointer',padding:0,marginBottom:16}}>← 아동 목록으로</button>
+      <h2 style={{fontSize:18,fontWeight:800,color:C.primary,marginBottom:16}}>📊 기관 대시보드</h2>
+
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:16}}>
+        <div style={{background:C.surface,borderRadius:12,padding:16,boxShadow:'0 2px 8px rgba(0,0,0,.06)',textAlign:'center'}}>
+          <p style={{fontSize:26,fontWeight:800,color:C.primary}}>{stats.total_children||0}</p>
+          <p style={{fontSize:12,color:C.muted}}>전체 아동</p>
+        </div>
+        <div style={{background:C.surface,borderRadius:12,padding:16,boxShadow:'0 2px 8px rgba(0,0,0,.06)',textAlign:'center'}}>
+          <p style={{fontSize:26,fontWeight:800,color:C.accent}}>{stats.total_teachers||0}</p>
+          <p style={{fontSize:12,color:C.muted}}>선생님 수</p>
+        </div>
+        <div style={{background:C.surface,borderRadius:12,padding:16,boxShadow:'0 2px 8px rgba(0,0,0,.06)',textAlign:'center'}}>
+          <p style={{fontSize:26,fontWeight:800,color:'#7B5EA7'}}>{stats.total_classes||0}</p>
+          <p style={{fontSize:12,color:C.muted}}>반 수</p>
+        </div>
+        <div style={{background:C.surface,borderRadius:12,padding:16,boxShadow:'0 2px 8px rgba(0,0,0,.06)',textAlign:'center'}}>
+          <p style={{fontSize:26,fontWeight:800,color:'#C0622F'}}>{Object.values(stats.assessments_by_phase||{}).reduce((a,b)=>a+b,0)}</p>
+          <p style={{fontSize:12,color:C.muted}}>총 평가 건수</p>
+        </div>
+      </div>
+
+      {stats.domain_averages&&(
+        <div style={{background:C.surface,borderRadius:12,padding:16,marginBottom:12,boxShadow:'0 2px 8px rgba(0,0,0,.06)'}}>
+          <p style={{fontWeight:700,color:C.primary,fontSize:14,marginBottom:12}}>기관 전체 5대 영역 평균</p>
+          {DOMAINS.map(d=>{
+            const score=Math.round(stats.domain_averages[d.id]||0);
+            return (
+              <div key={d.id} style={{marginBottom:10}}>
+                <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
+                  <span style={{fontSize:13,fontWeight:600,color:C.text}}>{d.icon} {d.label}</span>
+                  <span style={{fontSize:13,fontWeight:800,color:d.color}}>{score}점</span>
+                </div>
+                <div style={{height:7,borderRadius:99,background:C.border}}>
+                  <div style={{height:'100%',borderRadius:99,background:d.color,width:`${score}%`}}/>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {stats.assessments_by_phase&&(
+        <div style={{background:C.surface,borderRadius:12,padding:16,marginBottom:12,boxShadow:'0 2px 8px rgba(0,0,0,.06)'}}>
+          <p style={{fontWeight:700,color:C.primary,fontSize:14,marginBottom:12}}>단계별 평가 진행 현황</p>
+          {Object.entries(stats.assessments_by_phase).map(([phase,cnt])=>(
+            <div key={phase} style={{display:'flex',justifyContent:'space-between',padding:'6px 0',borderBottom:`1px solid ${C.border}`}}>
+              <span style={{fontSize:13,color:C.text}}>{phaseLabels[phase]||phase}</span>
+              <span style={{fontSize:13,fontWeight:700,color:C.accent}}>{cnt}건</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {stats.children_per_class&&(
+        <div style={{background:C.surface,borderRadius:12,padding:16,boxShadow:'0 2px 8px rgba(0,0,0,.06)'}}>
+          <p style={{fontWeight:700,color:C.primary,fontSize:14,marginBottom:12}}>반별 아동 수</p>
+          {Object.entries(stats.children_per_class).map(([cls,cnt])=>(
+            <div key={cls} style={{display:'flex',justifyContent:'space-between',padding:'6px 0',borderBottom:`1px solid ${C.border}`}}>
+              <span style={{fontSize:13,color:C.text}}>{cls}</span>
+              <span style={{fontSize:13,fontWeight:700,color:C.primary}}>{cnt}명</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── 반 관리 ──
+function ClassManager({onBack}){
+  const [classes,setClasses]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [name,setName]=useState('');
+  const [ageGroup,setAgeGroup]=useState('');
+  const [showAdd,setShowAdd]=useState(false);
+
+  useEffect(()=>{
+    sb.from('classes').select('*').order('created_at',{ascending:false}).then(({data})=>{
+      setClasses(data||[]);setLoading(false);
+    });
+  },[]);
+
+  async function add(){
+    if(!name.trim())return;
+    const {data,error}=await sb.rpc('create_class',{p_name:name.trim(),p_age_group:ageGroup});
+    if(!error&&data){
+      const {data:cls}=await sb.from('classes').select('*').eq('id',data).single();
+      if(cls)setClasses(prev=>[cls,...prev]);
+    }
+    setName('');setAgeGroup('');setShowAdd(false);
+  }
+
+  async function remove(id){
+    await sb.from('classes').delete().eq('id',id);
+    setClasses(prev=>prev.filter(c=>c.id!==id));
+  }
+
+  return (
+    <div>
+      <button onClick={onBack} style={{background:'none',border:'none',color:C.accent,fontSize:14,fontWeight:600,cursor:'pointer',padding:0,marginBottom:16}}>← 아동 목록으로</button>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
+        <h2 style={{fontSize:18,fontWeight:800,color:C.primary}}>🏫 반 관리</h2>
+        <button onClick={()=>setShowAdd(s=>!s)} style={{background:C.accent,color:'#fff',border:'none',borderRadius:7,padding:'7px 13px',fontSize:12,fontWeight:700,cursor:'pointer'}}>+ 반 추가</button>
+      </div>
+      {showAdd&&(
+        <div style={{background:C.surface,borderRadius:10,padding:14,marginBottom:12,boxShadow:'0 2px 8px rgba(0,0,0,.06)'}}>
+          <input value={name} onChange={e=>setName(e.target.value)} placeholder="반 이름 (예: 햇님반)" style={{width:'100%',borderRadius:8,border:`1.5px solid ${C.border}`,padding:'9px 12px',fontSize:14,marginBottom:8,outline:'none'}}/>
+          <input value={ageGroup} onChange={e=>setAgeGroup(e.target.value)} placeholder="연령 (예: 만 5세)" style={{width:'100%',borderRadius:8,border:`1.5px solid ${C.border}`,padding:'9px 12px',fontSize:14,marginBottom:8,outline:'none'}}/>
+          <button onClick={add} style={{width:'100%',background:C.primary,color:'#fff',border:'none',borderRadius:8,padding:10,fontSize:14,fontWeight:700,cursor:'pointer'}}>등록</button>
+        </div>
+      )}
+      {loading?<p style={{textAlign:'center',color:C.muted,padding:'32px 0'}}>불러오는 중...</p>
+        :classes.length===0?<p style={{textAlign:'center',color:C.muted,padding:'32px 0',fontSize:13}}>등록된 반이 없습니다.</p>
+        :classes.map(c=>(
+          <div key={c.id} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,padding:'13px 14px',marginBottom:7,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+            <div>
+              <p style={{fontWeight:700,fontSize:14,color:C.text}}>{c.name}</p>
+              {c.age_group&&<p style={{fontSize:11,color:C.muted,marginTop:2}}>{c.age_group}</p>}
+            </div>
+            <button onClick={()=>remove(c.id)} style={{background:'none',border:'none',color:'#C0392B',fontSize:12,fontWeight:700,cursor:'pointer'}}>삭제</button>
+          </div>
+        ))
+      }
+    </div>
+  );
+}
+
+// ── 교사 관리 ──
+function TeacherManager({profile,onBack}){
+  const [teachers,setTeachers]=useState([]);
+  const [loading,setLoading]=useState(true);
+
+  useEffect(()=>{
+    sb.rpc('get_school_teachers').then(({data,error})=>{
+      if(!error)setTeachers(data||[]);
+      setLoading(false);
+    });
+  },[]);
+
+  async function changeRole(id,newRole){
+    const adminCount=teachers.filter(t=>t.role==='admin').length;
+    const target=teachers.find(t=>t.id===id);
+    if(target.role==='admin'&&newRole==='teacher'&&adminCount<=1){
+      alert('최소 1명의 관리자가 있어야 합니다.');
+      return;
+    }
+    const {error}=await sb.rpc('update_teacher_role',{p_teacher_id:id,p_new_role:newRole});
+    if(!error){
+      setTeachers(prev=>prev.map(t=>t.id===id?{...t,role:newRole}:t));
+    }
+  }
+
+  return (
+    <div>
+      <button onClick={onBack} style={{background:'none',border:'none',color:C.accent,fontSize:14,fontWeight:600,cursor:'pointer',padding:0,marginBottom:16}}>← 아동 목록으로</button>
+      <h2 style={{fontSize:18,fontWeight:800,color:C.primary,marginBottom:16}}>👥 선생님 관리</h2>
+      {loading?<p style={{textAlign:'center',color:C.muted,padding:'32px 0'}}>불러오는 중...</p>
+        :teachers.map(t=>(
+          <div key={t.id} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,padding:'13px 14px',marginBottom:7,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+            <div>
+              <p style={{fontWeight:700,fontSize:14,color:C.text}}>{t.name||'(이름 없음)'}</p>
+              <p style={{fontSize:11,color:C.muted,marginTop:2}}>{t.id===profile.id?'본인':''}</p>
+            </div>
+            <select value={t.role} onChange={e=>changeRole(t.id,e.target.value)}
+              disabled={t.id===profile.id&&teachers.filter(x=>x.role==='admin').length<=1}
+              style={{borderRadius:7,border:`1.5px solid ${C.border}`,padding:'6px 10px',fontSize:12,fontWeight:700,color:t.role==='admin'?C.primary:C.muted,cursor:'pointer'}}>
+              <option value="teacher">교사</option>
+              <option value="admin">관리자</option>
+            </select>
+          </div>
+        ))
+      }
+    </div>
+  );
+}
+
+function App(){
+  const [session,setSession]=useState(undefined);
+  const [profile,setProfile]=useState(null);
+  const [selectedChild,setSelectedChild]=useState(null);
+  const [view,setView]=useState('list');
+
+  useEffect(()=>{
+    sb.auth.getSession().then(({data:{session}})=>setSession(session));
+    const {data:{subscription}}=sb.auth.onAuthStateChange((_,s)=>setSession(s));
+    return ()=>subscription.unsubscribe();
+  },[]);
+
+  useEffect(()=>{
+    if(!session){setProfile(null);return;}
+    sb.from('profiles').select('*').eq('id',session.user.id).single().then(({data})=>setProfile(data));
+  },[session]);
+
+  async function logout(){await sb.auth.signOut();setSelectedChild(null);setView('list');}
+
+  if(session===undefined)return <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',color:C.muted}}>로딩 중...</div>;
+  if(!session)return <Auth/>;
+  if(!profile)return (
+    <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:12,padding:20,textAlign:'center'}}>
+      <p style={{color:C.muted,fontSize:14}}>프로필을 불러오지 못했습니다.<br/>다시 로그인해주세요.</p>
+      <button onClick={logout} style={{background:C.primary,color:'#fff',border:'none',borderRadius:8,padding:'10px 20px',fontWeight:700,cursor:'pointer'}}>로그아웃</button>
+    </div>
+  );
+
+  const isAdmin=profile.role==='admin';
+
+  return (
+    <div style={{minHeight:'100vh',background:C.bg}}>
+      <div style={{background:C.primary,color:'#fff',padding:'18px 18px 14px',position:'sticky',top:0,zIndex:10,boxShadow:'0 2px 10px rgba(0,0,0,.15)'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',maxWidth:480,margin:'0 auto'}}>
+          <div>
+            <p style={{fontSize:10,color:'rgba(255,255,255,.55)',fontWeight:700,letterSpacing:1,marginBottom:2}}>사회·정서 발달 성장평가</p>
+            <h1 style={{fontSize:16,fontWeight:800}}>우리 아이 사회성 성장 포트폴리오</h1>
+          </div>
+          <button onClick={logout}
+            style={{background:'rgba(255,255,255,.15)',color:'#fff',border:'none',borderRadius:7,padding:'5px 10px',fontSize:11,fontWeight:700,cursor:'pointer'}}>로그아웃</button>
+        </div>
+        <p style={{fontSize:10,color:'rgba(255,255,255,.4)',marginTop:6,maxWidth:480,margin:'6px auto 0'}}>
+          {profile.name||'선생님'} 님 {isAdmin&&<span style={{background:'rgba(255,255,255,.2)',borderRadius:10,padding:'1px 7px',marginLeft:4}}>관리자</span>}
+        </p>
+        <div style={{display:'flex',gap:5,marginTop:10,maxWidth:480,margin:'10px auto 0',overflowX:'auto'}}>
+          <button onClick={()=>{setView('list');setSelectedChild(null);}}
+            style={{flexShrink:0,background:view==='list'?'rgba(255,255,255,.25)':'rgba(255,255,255,.1)',color:'#fff',border:'none',borderRadius:7,padding:'5px 10px',fontSize:11,fontWeight:700,cursor:'pointer'}}>👶 아동</button>
+          <button onClick={()=>{setView('mypage');setSelectedChild(null);}}
+            style={{flexShrink:0,background:view==='mypage'?'rgba(255,255,255,.25)':'rgba(255,255,255,.1)',color:'#fff',border:'none',borderRadius:7,padding:'5px 10px',fontSize:11,fontWeight:700,cursor:'pointer'}}>마이페이지</button>
+          {isAdmin&&<>
+            <button onClick={()=>{setView('dashboard');setSelectedChild(null);}}
+              style={{flexShrink:0,background:view==='dashboard'?'rgba(255,255,255,.25)':'rgba(255,255,255,.1)',color:'#fff',border:'none',borderRadius:7,padding:'5px 10px',fontSize:11,fontWeight:700,cursor:'pointer'}}>📊 대시보드</button>
+            <button onClick={()=>{setView('classes');setSelectedChild(null);}}
+              style={{flexShrink:0,background:view==='classes'?'rgba(255,255,255,.25)':'rgba(255,255,255,.1)',color:'#fff',border:'none',borderRadius:7,padding:'5px 10px',fontSize:11,fontWeight:700,cursor:'pointer'}}>🏫 반관리</button>
+            <button onClick={()=>{setView('teachers');setSelectedChild(null);}}
+              style={{flexShrink:0,background:view==='teachers'?'rgba(255,255,255,.25)':'rgba(255,255,255,.1)',color:'#fff',border:'none',borderRadius:7,padding:'5px 10px',fontSize:11,fontWeight:700,cursor:'pointer'}}>👥 선생님</button>
+          </>}
+        </div>
+      </div>
+      <div style={{maxWidth:480,margin:'0 auto',padding:'18px 16px 48px'}}>
+        {selectedChild
+          ?<AssessmentView child={selectedChild} profile={profile} onBack={()=>setSelectedChild(null)}/>
+          :view==='mypage'?<MyPage profile={profile} onBack={()=>setView('list')}/>
+          :view==='dashboard'?<Dashboard onBack={()=>setView('list')}/>
+          :view==='classes'?<ClassManager onBack={()=>setView('list')}/>
+          :view==='teachers'?<TeacherManager profile={profile} onBack={()=>setView('list')}/>
+          :<ChildList schoolId={profile.school_id} onSelect={setSelectedChild}/>
+        }
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
