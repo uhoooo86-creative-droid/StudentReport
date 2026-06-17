@@ -1,4 +1,7 @@
 exports.handler = async (event) => {
+  console.log('METHOD:', event.httpMethod);
+  console.log('BODY:', event.body);
+
   const headers = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Content-Type',
@@ -10,7 +13,8 @@ exports.handler = async (event) => {
   }
 
   if (event.httpMethod !== 'POST') {
-    return { statusCode: 405, headers, body: JSON.stringify({ error: 'Method not allowed' }) };
+    console.log('REJECTED: method was', event.httpMethod);
+    return { statusCode: 405, headers, body: JSON.stringify({ error: 'Method not allowed', receivedMethod: event.httpMethod }) };
   }
 
   try {
